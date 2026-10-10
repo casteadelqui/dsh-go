@@ -1,0 +1,73 @@
+{
+  "name": "dsh-go-mode",
+  "version": "1.0.0",
+  "description": "围棋模式：一个带棋盘界面、规则引擎、五档 AI 与教学点评的 DSH 插件。可以和鲸娘互相切磋，一边下一边学。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "go",
+    "weiqi",
+    "baduk",
+    "board-game",
+    "ui"
+  ],
+  "license": "MIT",
+  "author": "casteadelqui",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/casteadelqui/dsh-go.git"
+  },
+  "homepage": "https://github.com/casteadelqui/dsh-go#readme",
+  "bugs": {
+    "url": "https://github.com/casteadelqui/dsh-go/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.0-rc.2": "compatible"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "react": "^18.3.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}

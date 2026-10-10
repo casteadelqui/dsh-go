@@ -1,0 +1,12 @@
+# 仓库里统一用 LF，避免 Windows 上检出成 CRLF 后 selftest.html / client.js 的字节比对失败
+* text=auto eol=lf
+
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.ico binary
+*.tgz binary
+
+package-lock.json -diff
+pnpm-lock.yaml -diff

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-go 浏览器半侧自检</title>
+<style>
+ body{margin:0;background:#14120f;color:#e8e2d6;font:13px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:20px}
+ h1{font-size:15px;margin:0 0 12px}
+ ul{margin:0;padding:0}
+ li{list-style:none;padding:3px 0}
+ .p{color:#8fd694}.f{color:#ff8f8f}
+ pre{background:#1e1b17;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<h1>dsh-go 浏览器半侧自检</h1>
+<ul id="out"></ul>
+<pre id="dump"></pre>
+<script>
+(function(){
+  /* 这个页面会被宿主半侧从 /dsh-go/selftest 与 /dsh-go/assets/selftest.html 两处送到浏览器。
+     它用假的 __ModuleLoader__ / react / ctx.slots 把 lib/client.js 完整跑一遍，
+     验证它确实会往 conversation.view 注册「围棋」标签、组件能挂载、并且能拉起棋盘脚本。 */
+  var base = location.pathname.replace(/\/assets\/[^/]*$/, '').replace(/\/selftest$/, '')
+  if (!/^\/dsh-go/.test(base)) base = '/dsh-go'
+
+  var out = document.getElementById('out')
+  var pass = 0, fail = 0
+  function ok(cond, name, extra){
+    var li = document.createElement('li')
+    li.className = cond ? 'p' : 'f'
+    li.textContent = (cond ? 'PASS  ' : 'FAIL  ') + name + (extra !== undefined && !cond ? '  -> ' + extra : '')
+    out.appendChild(li)
+    cond ? pass++ : fail++
+  }
+
+  /* ---- 假 React ---- */
+  var effectQueue = []
+  var React = {
+    createElement: function(type, props){
+      var children = Array.prototype.slice.call(arguments, 2)
+      return { $$typeof: 'el', type: type, props: props || {}, children: children }
+    },
+    useRef: function(init){ return { current: init === undefined ? null : init } },
+    useState: function(init){ return [typeof init === 'function' ? init() : init, function(){}] },
+    useEffect: function(fn, deps){ effectQueue.push({ fn: fn, deps: deps }) },
+    useMemo: function(fn){ return fn() },
+    useCallback: function(fn){ return fn },
+    Fragment: 'Fragment'
+  }
+
+  /* ---- 捕获模块 ---- */
+  var captured = null
+  window.__ModuleLoader__ = { load: function(entry){ captured = entry } }
+
+  /* ---- 假 ctx.slots ---- */
+  var registered = null
+  var injectedKeys = []
+  function fakeCtx(){
+    return {
+      slots: {
+        inject: function(key, cb){ injectedKeys.push(key); cb() },
+        register: function(opts, comp){ registered = { opts: opts, comp: comp }; return function(){} }
+      },
+      get: function(){ return undefined },
+      on: function(){ return function(){} },
+      effect: function(fn){ try { fn() } catch(e){} return function(){} },
+      logger: console
+    }
+  }
+
+  var s = document.createElement('script')
+  s.src = base + '/assets/client.js?t=' + Date.now()
+  s.onload = function(){
+    try {
+      ok(!!captured, '__ModuleLoader__.load 被调用')
+      ok(captured && captured.id === 'dsh-go-mode', '模块 id 是 dsh-go-mode', captured && captured.id)
+      ok(captured && typeof captured.factory === 'function', 'factory 是函数')
+      if (!captured || typeof captured.factory !== 'function') return finish()
+
+      var mod = captured.factory(function(name){
+        if (name === 'react') return React
+        throw new Error('意外的 require: ' + name)
+      })
+
+      ok(!!mod, 'factory 返回 exports')
+      ok(mod && mod.name === 'dsh-go-mode', "exports.name === 'dsh-go-mode'", mod && mod.name)
+      ok(mod && Array.isArray(mod.inject) && mod.inject.indexOf('slots') >= 0, 'exports.inject 含 slots', JSON.stringify(mod && mod.inject))
+      ok(mod && typeof mod.apply === 'function', 'exports.apply 是函数')
+
+      if (mod && typeof mod.apply === 'function') {
+        mod.apply(fakeCtx())
+        ok(injectedKeys.indexOf('conversation.view') >= 0, '往 conversation.view 注入', JSON.stringify(injectedKeys))
+        ok(!!registered, 'slots.register 被调用')
+      }
+      if (registered) {
+        var o = registered.opts
+        ok(o.name === 'conversation.view', '注册名 conversation.view', o.name)
+        ok(o.id === 'go', '注册 id = go', o.id)
+        ok(typeof o.order === 'number', '给了 order', o.order)
+        ok(typeof o.label === 'function' && o.label() === '围棋', 'label() === 围棋', o.label && o.label())
+        ok(typeof registered.comp === 'function', '组件是函数')
+      }
+
+      var comp = registered && registered.comp
+      var container = null
+      if (typeof comp === 'function') {
+        var props = {
+          sessionId: 'selftest',
+          inputActions: { captureInsertion: function(){}, insertText: function(){}, setDraft: function(){}, submit: function(){} }
+        }
+        try {
+          var element = comp(props)
+          ok(!!element, 'GoView(props) 返回元素')
+          ok(element && element.type === 'div', '根元素是 div', element && element.type)
+          ok(element && element.props && element.props.ref && typeof element.props.ref === 'object', '挂了 ref 对象')
+          ok(element && element.props && element.props.style && element.props.style.display === 'flex', '根样式是 flex 容器')
+
+          /* 真 React 会把 ref.current 指向真实 DOM 节点；假 React 不代劳，这里手动补上，
+             于是后面跑 useEffect 时走的就是「真实挂载」那条路。 */
+          container = document.createElement('div')
+          container.id = 'selftest-mount'
+          container.style.cssText = 'position:relative;width:900px;height:640px;border:1px dashed #555'
+          document.body.appendChild(container)
+          if (element && element.props && element.props.ref) element.props.ref.current = container
+        } catch (e) {
+          ok(false, 'GoView(props) 不抛错', String(e && e.message))
+        }
+
+        /* 先清干净：万一有别的东西（缓存 / 预载）已经把 app.js 拉进来了，
+           不清掉就测不出「这次 useEffect 真的去加载了」。 */
+        var stale = document.querySelectorAll('script[src*="/dsh-go/app.js"]')
+        for (var k = 0; k < stale.length; k++) stale[k].parentNode.removeChild(stale[k])
+        try { window.__DSH_GO_APP__ = undefined } catch (e) { /* ignore */ }
+
+        var before = document.querySelectorAll('script[src*="/dsh-go/app.js"]').length
+        for (var i = 0; i < effectQueue.length; i++) {
+          try { effectQueue[i].fn() } catch (e) { ok(false, 'useEffect 不抛错', String(e && e.message)) }
+        }
+        var after = document.querySelectorAll('script[src*="/dsh-go/app.js"]').length
+        ok(after > before, 'useEffect 插入了 /dsh-go/app.js', before + ' -> ' + after)
+      }
+
+      waitMount(container, 0)
+    } catch (e) {
+      ok(false, '整体自检不抛错', String((e && e.stack) || e))
+      finish()
+    }
+  }
+  s.onerror = function(){ ok(false, 'client.js 能加载'); finish() }
+  document.head.appendChild(s)
+
+  /* 等 app.js 就绪并真挂载进 container：这一步证明「DSH 客户端 → 本插件 UI」的整条链路能通。
+     注意要轮询到「dshgo-root 类真的挂上去了」为止——mount 是异步的（脚本 onload 之后才跑），
+     用固定延时会在慢机器上偶发误判。 */
+  function waitMount(container, tries){
+    var isRoot = !!(container && container.classList && container.classList.contains('dshgo-root'))
+    if (isRoot) {
+      ok(typeof window.__DSH_GO_APP__.mount === 'function', 'app.js 有 mount()')
+      ok(true, '界面真的挂载进了挂载点')
+      ok(!!container.querySelector('.dshgo-left') && !!container.querySelector('.dshgo-right'), '左（棋盘）/ 右（面板）两栏都在')
+      ok(!!container.querySelector('canvas'), '挂载结果里有棋盘 canvas')
+      var btns = container.querySelectorAll('button')
+      ok(btns.length >= 8, '控件按钮齐全', btns.length + ' 个')
+      return finish()
+    }
+    if (tries > 80) {
+      if (!window.__DSH_GO_APP__) ok(false, 'app.js 暴露 window.__DSH_GO_APP__', '等待超时')
+      ok(false, '界面真的挂载进了挂载点', 'container.innerHTML 长度 ' + (container ? container.innerHTML.length : -1))
+      return finish()
+    }
+    setTimeout(function(){ waitMount(container, tries + 1) }, 150)
+  }
+
+  function finish(){
+    var li = document.createElement('li')
+    li.className = fail ? 'f' : 'p'
+    li.style.marginTop = '10px'
+    li.textContent = '结果：' + pass + ' 通过 / ' + fail + ' 失败'
+    out.appendChild(li)
+    document.getElementById('dump').textContent = JSON.stringify({
+      pass: pass, fail: fail,
+      registered: registered && { name: registered.opts.name, id: registered.opts.id, order: registered.opts.order, label: registered.opts.label() },
+      injected: injectedKeys
+    }, null, 2)
+    window.__DSH_GO_SELFTEST__ = { pass: pass, fail: fail }
+  }
+})()
+</script>
+</body>
+</html>

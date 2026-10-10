@@ -1,0 +1,46 @@
+dsh-go — 第三方素材与许可说明
+================================
+
+本插件本体以 MIT 许可发布（见 LICENSE）。它使用了以下免费素材：
+
+1. 棋盘木纹 —— assets/board.jpg
+   来源：@sabaki/shudan 1.8.0 的 css/board.png
+   项目：https://github.com/SabakiHQ/Shudan
+   作者：Yichuan Shen 及 Sabaki 贡献者
+   许可：MIT
+   改动：对原始 388×800 纹理做了中心正方裁切（388×388），放大到 1024×1024
+        （LANCZOS），轻微高斯模糊（0.4）与对比度调整（0.96），另存为 JPEG
+        （quality 90，progressive）。木纹的纵横比例保持不变。
+   说明：@sabaki/shudan 是 Sabaki 围棋打谱软件的棋盘组件，按 MIT 许可自由使用。
+
+2. 暗色卡面 —— assets/frame.jpg
+   同上来源，由 board.jpg 经 Brightness(0.42) 与 Color(1.25) 处理得到。
+
+未使用的素材：
+   @sabaki/shudan 的 css/stone_1.svg 与 css/stone_-1.svg 没有被采用。
+   本插件的棋子完全由 canvas 的 createRadialGradient 直接绘制
+   （见 lib/ui.js 的 GoApp.prototype.stone），不含任何第三方图像。
+
+@sabaki/shudan 的 MIT 许可全文：
+
+  MIT License
+
+  Copyright (c) 2016-2023 Yichuan Shen
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

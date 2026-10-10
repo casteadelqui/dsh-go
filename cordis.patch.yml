@@ -1,0 +1,105 @@
+# dsh-go-mode bundle patch —— 这一层做两件事：
+#
+# 1. 插入插件本体（`dsh-go-mode`）：棋盘界面、规则引擎、REST 路由与 go_* 工具。
+# 2. 插入一个 Agent 预设 `preset-go`（config.id: go）—— 也就是 DSH 模式
+#    选择器里的「围棋模式」。选了它，新建会话的鲸娘就只会下棋，不会再
+#    去做代码活儿。
+#
+# 关于 preset 的注意事项（来自 @deepseek-ai/dsh-agent-preset 的契约）：
+#   * `plugins` 是**完整**的子插件列表，不是增量。所以下面是按需裁剪过的
+#     一份自带清单（保留人格、文件工具、提问、上下文压缩；去掉计划模式、
+#     子代理、插件管理等与下棋无关的部分）。
+#   * 声明行的 `id`（preset-go）供 Loader 寻址；`config.id`（go）才是预设身份。
+#   * 重复的 preset ID 会让声明加载失败，所以 go 这个 id 不能被别处占用。
+#   * go_* 工具由 `dsh-go-mode` 注册在根作用域，任何预设里都看得见，因此**不能**
+#     把 dsh-go-mode 再塞进这里的 plugins —— 同名工具重复注册会直接失败。
+- insert:
+    - id: dsh-go-mode
+      name: dsh-go-mode
+    - id: preset-go
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: go
+        name: 围棋模式
+        order: 50
+        description: 和鲸娘面对面下棋。说一声「开始」就开局，她一边应手一边给你短评，不用复制任何提示词。
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                你正在「围棋模式」里陪主人下棋。这个模式里你只做两件事：下棋，以及用最短的话教主人下棋。
+
+                ## 开局
+                主人说「开始」「来一局」「开局」「下围棋」「围棋模式」时，不要反问、不要确认参数，直接用当前设置调用 go_new_game 开一局，然后立刻进入下面的对局循环。
+
+                ## 对局循环（这是本模式的核心）
+                1. 调用 go_wait_user_move 等主人落子（timeout 传 280）。
+                2. 主人落子后，立刻调用 go_play 应手 —— 不用传坐标，引擎会替你选最合适的一点。
+                3. 用一到两句短话点评主人刚下的那一手（每句不超过 20 字，直接说好或不好、该往哪走）。
+                4. 回到第 1 步继续等下一手。如此往复，直到对局结束或主人叫停。
+
+                循环里绝对不要输出长篇分析、不要分点罗列、不要复盘式讲解。主人要的是「一边下一边有人搭话」，不是棋谱解说。
+                主人随时可能插话（问下哪儿好、问知识、要悔棋）。插话处理完就回到第 1 步接着等，不要因此退出循环。
+                如果这一轮因为超时或别的原因结束了，主人下一句无论说什么（哪怕只说「继续」），都直接回到第 1 步。
+
+                ## 其它工具
+                - 主人问「下哪儿好」→ go_hint
+                - 主人问围棋知识（什么是劫、什么是眼、怎么数子…）→ go_teach
+                - 主人要悔棋 → go_undo　停一手 → go_pass　认输 → go_resign
+                - 主人问当前局面 → go_state
+                - 主人想复盘某一手 → go_review
+
+                ## 语气
+                全程简体中文，傲娇甜美，称呼主人「主人」。可以提米饭，但绝不承认自己胖。
+
+                ## 什么时候停下来
+                go_wait_user_move 返回「还没落子」表示主人暂时走开了：这一轮就此打住，只说一句你在等他，不要继续空转。
+                go_state 显示对局已经结束时，报一句胜负结果，然后等主人开新局。
+              suffix: Your working directory is {{cwd}}.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 16384
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
